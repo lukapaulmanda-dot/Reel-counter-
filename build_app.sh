@@ -600,15 +600,98 @@ class MainActivity : Activity() {
         return s.contains(packageName) && s.contains("ReelService")
     }
 
-    private fun fmtTime(s: Int): String =
-        if (s >= 3600) "${s / 3600}h ${(s % 3600) / 60}m"
-        else if (s >= 60) "${s / 60}m ${s % 60}s"
-        else "${s}s"
+    private fun fmtTime(s: Int): String {
+        if (s >= 3600) {
+            return "${s / 3600}h ${(s % 3600) / 60}m"
+        }
+        if (s >= 60) {
+            return "${s / 60}m ${s % 60}s"
+        }
+        return "${s}s"
+    }
 
     private fun refresh() {
-        statusTv.text = if (isServiceOn())
-            "✅ Counter is ON. Open Shorts/Reels and swipe!"
-        else
-            "⚠️ Counter is OFF. Tap the button below > find 'Reel Counter' > turn it ON."
+        if (isServiceOn()) {
+            statusTv.text = "✅ Counter is ON. Open Shorts/Reels and swipe!"
+        } else {
+            statusTv.text = "⚠️ Counter is OFF. Tap the button below, find Reel Counter, turn it ON."
+        }
 
-        val 
+        val d = Store.dayKey()
+        val n = Store.count(this, d)
+        val s = Store.secs(this, d)
+        bigTv.text = n.toString()
+        var timeLine = "⏱ " + fmtTime(s) + " watched"
+        if (n > 0) {
+            timeLine = timeLine + "  •  ~" + (s / n).toString() + "s per reel"
+        }
+        timeTv.text = timeLine
+
+        val sb = StringBuilder()
+        for ((pkg, name) in Store.APPS) {
+            val c = Store.appCount(this, d, pkg)
+            val t = Store.appSecs(this, d, pkg)
+            if (c > 0 || t > 0) sb.append("• $name: $c reels, ${fmtTime(t)}\n")
+        }
+        appsTv.text = if (sb.isEmpty()) "No reels yet today" else sb.toString().trim()
+
+        hourChart.labels = (0..23).map { "$it" }
+        hourChart.values = (0..23).map { Store.hour(this, d, it) }
+        hourChart.invalidate()
+
+        val days = (6 downTo 0).map { Store.dayKey(it) }
+        val parser = SimpleDateFormat("yyyyMMdd", Locale.US)
+        val dayName = SimpleDateFormat("EEE", Locale.US)
+        weekChart.labels = days.map { dayName.format(parser.parse(it)!!) }
+        weekChart.values = days.map { Store.count(this, it) }
+        weekChart.invalidate()
+        weekTitle.text = "📅 Last 7 days: ${weekChart.values.sum()} reels total"
+    }
+}
+
+class BarChart(c: Context) : View(c) {
+    var labels: List<String> = emptyList()
+    var values: List<Int> = emptyList()
+    var barColor: Int = 0xFF4F5BD5.toInt()
+    private val p = Paint(Paint.ANTI_ALIAS_FLAG)
+
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        setMeasuredDimension(
+            MeasureSpec.getSize(widthMeasureSpec),
+            (190 * resources.displayMetrics.density).toInt()
+        )
+    }
+
+    override fun onDraw(cv: Canvas) {
+        val n = values.size
+        if (n == 0) return
+        val d = resources.displayMetrics.density
+        val top = 20 * d
+        val bottom = height - 22 * d
+        val max = (values.maxOrNull() ?: 0).coerceAtLeast(1)
+        val slot = width.toFloat() / n
+        p.textAlign = Paint.Align.CENTER
+        p.textSize = (if (n > 8) 9 else 12) * d
+
+        for (i in 0 until n) {
+            val bh = (bottom - top) * values[i] / max
+            val x0 = i * slot + slot * 0.15f
+            val x1 = (i + 1) * slot - slot * 0.15f
+            p.color = barColor
+            cv.drawRoundRect(x0, bottom - bh, x1, bottom, 4 * d, 4 * d, p)
+
+            p.color = 0xFF374151.toInt()
+            if (values[i] > 0) {
+                cv.drawText("${values[i]}", (x0 + x1) / 2, bottom - bh - 4 * d, p)
+            }
+            if (n <= 8 || i % 3 == 0) {
+                p.color = 0xFF6B7280.toInt()
+                val lab = if (i < labels.size) labels[i] else ""
+                cv.drawText(lab, (x0 + x1) / 2, height - 6 * d, p)
+            }
+        }
+    }
+}
+EOF
+
+echo "Project generated."
